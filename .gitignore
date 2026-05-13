@@ -1,0 +1,141 @@
+# TradingAgent 系统 — 忽略所有非核心文件
+
+# ===== 临时生成脚本 =====
+_gen_*.py
+_debate_*.py
+quick_*.py
+
+# ===== 历史分析脚本（保留模板等核心文件）=====
+run_baba_*.py
+run_baidu_*.py
+run_botai_*.py
+run_byd_*.py
+run_ce2*.py
+run_check*.py
+run_citic_bank.py
+run_dyg*.py
+run_extract*.py
+run_final_*.py
+run_huahong_*.py
+run_jd_*.py
+run_ks_*.py
+run_kuaishou_*.py
+run_meituan_*.py
+run_missing_*.py
+run_monitor*.py
+run_nio_*.py
+run_pm*.py
+run_portfolio_*.py
+run_sjg*.py
+run_smic_*.py
+run_tech_*.py
+run_tongcheng*.py
+run_triple_*.py
+run_xiaopeng_*.py
+run_xiaomi_debate_v3.py
+run_xiaomi_v3.py
+run_xpeng_*.py
+fetch_998*.py
+fetch_bidu*.py
+fetch_dyg*.py
+fetch_ks*.py
+fetch_lixiang*.py
+fetch_sjg*.py
+fetch_xiaomi*.py
+fetch_xiaopeng*.py
+fetch_zgyh*.py
+fetch_zjxc*.py
+analyse_*.py
+step*_*.py
+extract_*.py
+check_*.py
+inspect_*.py
+read_*.py
+vote_*.py
+calc_*.py
+list_*.py
+fix_*.py
+scan_*.py
+debug_*.py
+regen_*.py
+rebuild_*.py
+sanitize_*.py
+test_*.py
+monitor_*.py
+find_*.py
+ocr_*.py
+tmp_*.py
+analyse_*.py
+step*_*.py
+extract_*.py
+check_*.py
+inspect_*.py
+read_*.py
+vote_*.py
+calc_*.py
+list_*.py
+fix_*.py
+scan_*.py
+debug_*.py
+regen_*.py
+rebuild_*.py
+sanitize_*.py
+test_*.py
+monitor_*.py
+find_*.py
+ocr_*.py
+tmp_*.py
+
+# ===== Shell/batch 脚本 =====
+*.bat
+*.ps1
+*.sh
+
+# ===== 数据文件 =====
+*.json
+*.txt
+*.csv
+
+# ===== 临时文件 ._开头 =====
+_*.py
+_*.ps1
+_*.bat
+_*.cjs
+
+# ===== 图片/截图 =====
+*.png
+*.jpg
+*.jpeg
+*.gif
+
+# ===== macOS =====
+.DS_Store
+
+# ===== Python =====
+__pycache__/
+*.pyc
+*.pyo
+
+# ===== VS Code =====
+.vscode/
+*.code-workspace
+
+# ===== Environment =====
+.env
+*.env.local
+
+# ===== OpenClaw system files =====
+.openclaw/
+.learnings/
+.consolidate-state.json
+.iran_last_check
+cron_iran_monitor.json
+iran_monitor.log
+
+# ===== Other =====
+TradingAgents-fork/
+avatars/
+pdf_images/
+pdf_imgs2/
+6.0.0/
+skills/
