@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""小米集团(01810.HK) 9Agent分析 + 监工审计（来自run_citic_bank.py模板）
-Agent顺序（V3标准）：技术 → 基本面 → 情绪 → 新闻 → 多头 → 激进风控 → 空头 → 保守风控 → 中性风控 → 组合经理 → 监工
+"""小米集团(01810.HK) 10Agent分析 + 监工审计
+
+V5标准架构（三会制）：
+【研究委员会】技术/基本面/情绪/新闻 — 只给事实分析，不表态买入/卖出
+【风险委员会】激进风控/保守风控/中性风控 — 评估风险，不直接建议买卖
+【投决会】多头/空头/仲裁员 — 辩论并终裁
+
+流程：数据采集 → 研究委员会 → 风险委员会 → 投决会辩论+仲裁
 """
 import json, os, sys, urllib.request, re, time, subprocess
 from datetime import datetime
@@ -329,128 +335,164 @@ print(f"\nContext: {len(ctx_str)} chars")
 print("\n=== 9Agent 并行分析 ===")
 
 agents_prompts = {
-    "技术分析师": f"""你是{STOCK}({CODE})的技术分析师。
+    "技术分析师": f"""你是{STOCK}({CODE})**研究委员会**的技术分析师。
 
-**评分规则：评分越高=你越觉得应该买入**
+**职责**：只做事实分析，不表态买入/卖出。给出技术面的客观数据。
+
+数据：{ctx_str[:4000]}
+
+输出格式（只输出事实，不带买入/卖出建议）：
+**技术面评分**: X/10（越高=技术形态越好）
+**关键均线位置**: 
+**MACD状态**: 
+**KDJ/量能超买超卖**: 
+**支撑位/阻力位**: 
+**技术要点**: (5条)""",
+
+    "基本面分析师": f"""你是{STOCK}({CODE})**研究委员会**的基本面分析师。
+
+**职责**：只做事实分析，不表态买入/卖出。给出基本面的客观数据。
+
+数据：{ctx_str[:4000]}
+
+输出格式（只输出事实，不带买入/卖出建议）：
+**基本面评分**: X/10（越高=基本面越扎实）
+**盈利能力**: 
+**资产负债状况**: 
+**现金流**: 
+**增长趋势**: 
+**基本面要点**: (5条)""",
+
+    "情绪分析师": f"""你是{STOCK}({CODE})**研究委员会**的资金情绪分析师。
+
+**职责**：只做事实分析，不表态买入/卖出。给出资金面、情绪面的客观数据。
+
+数据：{ctx_str[:4000]}
+
+输出格式（只输出事实，不带买入/卖出建议）：
+**情绪面评分**: X/10（越高=情绪越积极）
+**资金流向**: 
+**主力/散户博弈**: 
+**量能分析**: 
+**情绪要点**: (4条)""",
+
+    "新闻分析师": f"""你是{STOCK}({CODE})**研究委员会**的新闻分析师。
+
+**职责**：只做事实分析，不表态买入/卖出。给出新闻面、事件驱动的客观数据。
+
+数据：{ctx_str[:5000]}
+
+输出格式（只输出事实，不带买入/卖出建议）：
+**新闻面评分**: X/10（越高=新闻面越正面）
+**核心事件**: 
+**新闻要点**: (4条)""",
+
+    "激进风控": f"""你是{STOCK}({CODE})**风险委员会**的激进风控官。
+
+**职责**：风险委员会的一员。评估「如果买入，风险是否可控」。给出客观的风险评估，不直接建议买卖。
+
+**评分规则：评分越高=机会越大/风险越低**
 
 数据：{ctx_str[:4000]}
 
 输出格式：
-**综合评分**: X/10
-**操作建议**: 买入/观望/卖出
-**技术要点**: (5条)
-1. ...
-2. ...""",
+**风险评估评分**: X/10（越高=风险越小）
+**机会评估**: (3-4条)
+**可控风险**: (2-3条)
+**不可控风险**: (2-3条)
+**最大可接受仓位**: X%
+**建议入场区间**:
+**止损参考**:""",
 
-    "基本面分析师": f"""你是{STOCK}({CODE})的基本面分析师。
+    "保守风控": f"""你是{STOCK}({CODE})**风险委员会**的保守风控官。
 
-**评分规则：评分越高=你越觉得应该买入**
+**职责**：风险委员会的一员。评估「如果买入，最坏情况有多糟」。给出客观的最坏场景评估，不直接建议买卖。
 
-数据：{ctx_str[:4000]}
-
-输出格式：
-**综合评分**: X/10
-**操作建议**: 买入/观望/卖出
-**基本面要点**: (5条)
-1. ...
-2. ...""",
-
-    "情绪分析师": f"""你是{STOCK}({CODE})的资金情绪分析师。
-
-**评分规则：评分越高=你越觉得应该买入**
+**评分规则：评分越高=最坏场景越可接受**
 
 数据：{ctx_str[:4000]}
 
 输出格式：
-**综合评分**: X/10
-**操作建议**: 买入/观望/卖出
-**情绪要点**: (4条)
+**风险评估评分**: X/10（越高=最坏场景越能接受）
+**极坏场景**: 
+**不确定性评估**: 
+**不可接受的损失**: 
+**安全边界**:
+**最大可接受仓位**: X%""",
+
+    "中性风控": f"""你是{STOCK}({CODE})**风险委员会**的中性风控官（协调人）。
+
+**职责**：风险委员会的协调者。综合激进和保守两方观点，给出委员会的总风险评估报告。不直接建议买卖。
+
+**评分规则：评分越高=总体风险越低**
+
+数据：{ctx_str[:4000]}
+
+输出格式：
+**委员会风险评估评分**: X/10（越高=风险越低）
+**看多风险点**: (2-3条)
+**看空风险点**: (2-3条)
+**委员会总评**: 
+**风险等级**: 高/中/低
+**折中方案**: (不涉及买卖建议，只涉及风险控制)""",
+
+    "多头": f"""你是{STOCK}({CODE})**投决会**的多头委员（纯看多立场）。
+
+**职责**：投决会是最终决策机构，你是其中的看多力量。你的存在价值是给出令人信服的买入逻辑。
+
+**评分规则：评分越高=越应该买入**
+
+数据：{ctx_str[:4000]}
+
+输出格式：
+**综合评分（越高越应买入）**: X/10
+**核心看多逻辑**: (4-5条)
 1. ...
-2. ...""",
+2. ...
+**仓位建议**: X%
+**买入理由一句话**:""",
 
-    "新闻分析师": f"""你是{STOCK}({CODE})的新闻分析师。
+    "空头": f"""你是{STOCK}({CODE})**投决会**的空头委员（纯看空立场）。
 
-**评分规则：评分越高=你越觉得应该买入**
+**职责**：投决会是最终决策机构，你是其中的看空力量。你的存在价值是找到致命弱点。
+
+**评分规则：评分越高=越应该买入（空头评分低=强烈看空）**
+
+数据：{ctx_str[:4000]}
+
+输出格式：
+**综合评分（越高越应买入）**: X/10
+**核心看空逻辑**: (4-5条)
+1. ...
+2. ...
+**仓位建议**: X%
+**看空理由一句话**:""",
+
+    "仲裁员": f"""你是{STOCK}({CODE})**投决会**的仲裁员（中立主席）。
+
+**职责**：投决会是最终决策机构，你是中立主席。研究委员会（技术/基本面/情绪/新闻）已经给出了客观的4个角度的分析，风险委员会（激进/保守/中性风控）已经做了风险评估。现在，你听完了多头和空头的对攻，需要做出独立终止——给出「买/不买」的最终建议。
+
+**评分规则：评分越高=越应该买入**
 
 数据：{ctx_str[:5000]}
 
 输出格式：
-**综合评分**: X/10
-**操作建议**: 买入/观望/卖出
-**核心事件**: 
-**新闻要点**: (4条)
-1. ...
-2. ...""",
-
-    "多头": f"""你是{STOCK}({CODE})的多头（纯看多立场）。
-
-**评分规则：评分越高=你越觉得应该买入**
-
-数据：{ctx_str[:4000]}
-
-输出格式：
-**综合评分**: X/10
-**操作建议**: 买入/观望/卖出
-**核心看多逻辑**: (4条)
-1. ...
-2. ...
-**仓位建议**: X%""",
-
-    "空头": f"""你是{STOCK}({CODE})的空头（纯看空立场）。
-
-**评分规则：评分越高=你越觉得应该买入（空头评分低=强烈看空）**
-
-数据：{ctx_str[:4000]}
-
-输出格式：
-**综合评分**: X/10
-**操作建议**: 买入/观望/卖出
-**核心看空逻辑**: (3-4条)
-1. ...
-2. ...
-**仓位建议**: X%""",
-
-    "激进风控": f"""你是{STOCK}({CODE})的激进风控（看多角度，辅助多头，带风控思维）。
-
-**评分规则：评分越高=你越觉得应该买入**
-
-数据：{ctx_str[:4000]}
-
-输出格式：
-**综合评分**: X/10
-**操作建议**: 买入/观望/卖出
-**核心看多逻辑**: (4-5条)
-**仓位建议**: X%
+**综合评分（越高越应买入）**: X/10
+**操作建议**: 买入/观望/不买
+**投决会决策理由**: (300-400字，需要考虑多空双方观点的优劣)
+**仓位建议（如买入）**: X%
 **入场/止损/目标**:""",
-
-    "保守风控": f"""你是{STOCK}({CODE})的保守风控。
-
-**评分规则：评分越高=你越觉得应该买入**
-
-数据：{ctx_str[:4000]}
-
-输出格式：
-**综合评分**: X/10
-**操作建议**: 买入/观望/卖出
-**核心风险**: (4-5条)
-**仓位建议**: X%""",
-
-    "中性风控": f"""你是{STOCK}({CODE})的中性风控。
-
-**评分规则：评分越高=你越觉得应该买入**
-
-数据：{ctx_str[:4000]}
-
-输出格式：
-**综合评分**: X/10
-**操作建议**: 买入/观望/卖出
-**看多因素**: **看空因素**: **折中方案**:""",
 }
 
 agent_results = {}
-print(f"  并行启动{len(agents_prompts)}个Agent...")
-with ThreadPoolExecutor(max_workers=len(agents_prompts)) as ex:
-    futures = {ex.submit(call_model, p): name for name, p in agents_prompts.items()}
+
+# ====== 第一阶段：研究委员会（并行4人） ======
+print(f"\n=== 第一阶段：研究委员会（技术/基本面/情绪/新闻） ===")
+research_names = ["技术分析师","基本面分析师","情绪分析师","新闻分析师"]
+research_prompts = {n: agents_prompts[n] for n in research_names}
+print(f"  并行启动{len(research_prompts)}个研究委员会Agent...")
+with ThreadPoolExecutor(max_workers=len(research_prompts)) as ex:
+    futures = {ex.submit(call_model, p): name for name, p in research_prompts.items()}
     for f in as_completed(futures):
         name = futures[f]
         try:
@@ -462,53 +504,99 @@ with ThreadPoolExecutor(max_workers=len(agents_prompts)) as ex:
         except Exception as e:
             print(f"  [{name}]: ERROR {e}")
 
-# ====== 组合经理（串行，依赖所有Agent结果） ======
-print("  [组合经理]...", end=" ", flush=True)
-all_views = ""
-for name in ["技术分析师","基本面分析师","情绪分析师","新闻分析师","多头","空头","激进风控","保守风控","中性风控"]:
-    v = agent_results.get(name,"")[:1000]
-    if v: all_views += f"\n### {name}\n{v}\n"
+# 整理研究委员会报告摘要
+research_summaries = []
+for name in research_names:
+    txt = agent_results.get(name, "")
+    if txt:
+        research_summaries.append(f"## {name}\n{txt[:1500]}")
+research_overview = "\n\n".join(research_summaries)
+research_file = os.path.join(AGENT_DIR, "研究委员会汇总.md")
+with open(research_file, "w", encoding="utf-8") as f:
+    f.write(f"# 研究委员会汇总 — {STOCK}({CODE})\n\n{research_overview}\n")
+print(f"  研究委员会报告: {len(research_overview)} chars")
 
-pm_prompt = f"""你是{STOCK}({CODE})投资委员会**组合经理**。
+# ====== 第二阶段：风险委员会（3人并行）======
+print(f"\n=== 第二阶段：风险委员会 ===")
+risk_names = ["激进风控","保守风控","中性风控"]
+risk_prompts = {}
+research_ref = f"\n\n=====\n## 研究委员会分析参考（请先阅读）\n{research_overview[:2500]}\n=====\n请先仔细阅读以上研究委员会的技术面/基本面/情绪/新闻分析，再给出你的风险委员会评估。"
+for name in risk_names:
+    risk_prompts[name] = agents_prompts[name] + research_ref
 
-用户持仓：成本{COST} HKD
+print(f"  并行启动{len(risk_prompts)}个风险委员会Agent...")
+with ThreadPoolExecutor(max_workers=len(risk_prompts)) as ex:
+    futures = {ex.submit(call_model, p): name for name, p in risk_prompts.items()}
+    for f in as_completed(futures):
+        name = futures[f]
+        try:
+            ans = f.result()
+            agent_results[name] = ans
+            with open(os.path.join(AGENT_DIR, f"agent_{name}.md"), "w", encoding="utf-8") as fout:
+                fout.write(f"# {name} 分析\n\n{ans}\n")
+            print(f"  [{name}]: {len(ans)} chars")
+        except Exception as e:
+            print(f"  [{name}]: ERROR {e}")
 
-**评分规则：评分越高=你越觉得应该买入**
+# 整理风险委员会报告摘要
+risk_summaries = []
+for name in risk_names:
+    txt = agent_results.get(name, "")
+    if txt:
+        risk_summaries.append(f"## {name}\n{txt[:1500]}")
+risk_overview = "\n\n".join(risk_summaries)
+risk_file = os.path.join(AGENT_DIR, "风险委员会汇总.md")
+with open(risk_file, "w", encoding="utf-8") as f:
+    f.write(f"# 风险委员会汇总 — {STOCK}({CODE})\n\n{risk_overview}\n")
+print(f"  风险委员会报告: {len(risk_overview)} chars")
 
-核心数据：
-{ctx_str[:3000]}
+# ====== 第三阶段：投决会（多头/空头/仲裁员，3人并行，读研究+风险）======
+print(f"\n=== 第三阶段：投决会 ===")
+vote_names = ["多头","空头","仲裁员"]
+vote_prompts = {}
+vote_ref = (f"\n\n=====\n## 研究委员会分析参考\n{research_overview[:2000]}\n"
+            f"\n## 风险委员会分析参考\n{risk_overview[:2000]}\n"
+            "=====\n请先仔细阅读以上研究委员会和风险委员会的全部分析，再给出你的投决会观点。")
+for name in vote_names:
+    vote_prompts[name] = agents_prompts[name] + vote_ref
 
-各分析师意见：
-{all_views[:6000]}
+print(f"  并行启动{len(vote_prompts)}个投决会Agent...")
+with ThreadPoolExecutor(max_workers=len(vote_prompts)) as ex:
+    futures = {ex.submit(call_model, p): name for name, p in vote_prompts.items()}
+    for f in as_completed(futures):
+        name = futures[f]
+        try:
+            ans = f.result()
+            agent_results[name] = ans
+            with open(os.path.join(AGENT_DIR, f"agent_{name}.md"), "w", encoding="utf-8") as fout:
+                fout.write(f"# {name} 分析\n\n{ans}\n")
+            print(f"  [{name}]: {len(ans)} chars")
+        except Exception as e:
+            print(f"  [{name}]: ERROR {e}")
 
-输出：
-**综合评分**: X/10
-**操作建议**: 买入/观望/卖出
-**入场价格**: 
-**止损价格**: 
-**目标价格**: 
-**仓位比例**: X%
-**决策理由**: （300-400字）"""
-pm_ans = call_model(pm_prompt, temp=0.3)
-agent_results["组合经理"] = pm_ans
-with open(os.path.join(AGENT_DIR, "agent_组合经理.md"), "w", encoding="utf-8") as f:
-    f.write(f"# 组合经理终裁\n\n{pm_ans}")
-print(f" {len(pm_ans)} chars")
+# ====== 仲裁员单独保存 ======
+arbitrator_text = agent_results.get("仲裁员", "")
+if arbitrator_text:
+    print(f"  [仲裁员]: {len(arbitrator_text)} chars")
+    with open(os.path.join(AGENT_DIR, "agent_仲裁员.md"), "w", encoding="utf-8") as f:
+        f.write(f"# 仲裁员终裁\n\n{arbitrator_text}\n")
+else:
+    print("  [仲裁员]: 缺失")
 
 # ================== 监工 ==================
 print("\n=== 监工Agent（审查-打回-再审） ===")
 
 required_fields = {
-    "技术分析师": ["综合评分", "操作建议", "技术要点"],
-    "基本面分析师": ["综合评分", "操作建议", "基本面要点"],
-    "情绪分析师": ["综合评分", "操作建议", "情绪要点"],
-    "新闻分析师": ["综合评分", "操作建议"],
-    "多头": ["综合评分", "操作建议", "核心看多逻辑"],
-    "空头": ["综合评分", "操作建议", "核心看空逻辑"],
-    "激进风控": ["综合评分", "操作建议", "核心看多逻辑"],
-    "保守风控": ["综合评分", "操作建议", "核心风险"],
-    "中性风控": ["综合评分", "操作建议"],
-    "组合经理": ["综合评分", "操作建议"],
+    "技术分析师": ["技术面评分", "技术要点"],
+    "基本面分析师": ["基本面评分", "基本面要点"],
+    "情绪分析师": ["情绪面评分", "情绪要点"],
+    "新闻分析师": ["新闻面评分", "新闻要点"],
+    "多头": ["综合评分", "核心看多逻辑"],
+    "空头": ["综合评分", "核心看空逻辑"],
+    "激进风控": ["风险评估评分", "机会评估"],
+    "保守风控": ["风险评估评分", "极坏场景"],
+    "中性风控": ["委员会风险评估评分"],
+    "仲裁员": ["综合评分", "投决会决策理由"],
 }
 
 def overseer_audit(agent_results):
@@ -520,13 +608,19 @@ def overseer_audit(agent_results):
         if len(text) < 80:
             issues.append(f"[监工] {name}: 字数仅{len(text)}，可能过于敷衍")
         for f in fields:
-            if f"**{f}**" not in text:
+            # 宽松匹配：**f** 或 **f（ 都算通过
+            if f"**{f}**" not in text and f"**{f}（" not in text and f"**{f}(" not in text:
                 issues.append(f"[监工] {name}: 缺少「{f}」字段")
     scores = {}
     for name in list(agent_results.keys()):
-        m = re.search(r'\*\*综合评分\*\*\s*:\s*([\d.]+)', agent_results.get(name,""))
+        txt = agent_results.get(name,"")
+        # 兼容研究委员会（技术面评分/基本面评分等）和投决会/风控（综合评分）
+        m = re.search(r'\*\*(?:综合评分|技术面评分|基本面评分|情绪面评分|新闻面评分|风险评估评分|委员会风险评估评分)[^0-9]*([\d.]+)', txt)
         if m: scores[name] = float(m.group(1))
     for name, text in agent_results.items():
+        # 研究委员会没有操作建议字段，跳过矛盾检测
+        if name in ["技术分析师","基本面分析师","情绪分析师","新闻分析师"]:
+            continue
         m_action = re.search(r'\*\*操作建议\*\*\s*:\s*([^\n]+)', text)
         if m_action and name in scores:
             act = m_action.group(1).strip(); sc = scores[name]
@@ -536,8 +630,11 @@ def overseer_audit(agent_results):
             for high_act in ["卖出","减仓"]:
                 if high_act in act and sc > 7:
                     issues.append(f"[监工] {name}: 评分{sc}却建议「{high_act}」，矛盾")
+    # 回避措辞检测也跳过研究委员会（他们不执行操作建议，说「不确定」是可以的）
     avoid = ["不确定","无法判断","不明确","可能也许"]
     for name, text in agent_results.items():
+        if name in ["技术分析师","基本面分析师","情绪分析师","新闻分析师"]:
+            continue  # 研究委员会只做事实分析，说「不确定」是正常的
         for w in avoid:
             if w in text: issues.append(f"[监工] {name}: 回避措辞「{w}」"); break
     return issues, scores
@@ -635,12 +732,15 @@ with open(os.path.join(AGENT_DIR, "监工审计报告.md"), "w", encoding="utf-8
     lines.append("")
     lines.append("| Agent | 评分 | 建议 |")
     lines.append("|:------|:---:|:----:|")
-    for name in ["技术分析师","基本面分析师","情绪分析师","新闻分析师","多头","激进风控","空头","保守风控","中性风控","组合经理"]:
+    for name in ["技术分析师","基本面分析师","情绪分析师","新闻分析师","多头","激进风控","空头","保守风控","中性风控","仲裁员"]:
         txt = agent_results.get(name,"")
-        m_sc = re.search(r'\*\*综合评分\*\*\s*:\s*([\d.]+)', txt)
-        m_act = re.search(r'\*\*操作建议\*\*\s*:\s*([^\n]+)', txt) if name != "组合经理" else re.search(r'\*\*操作建议\*\*\s*:\s*([^\n]+)', txt)
+        # 兼容：综合评分 / 技术面评分 / 基本面评分 / 情绪面评分 / 新闻面评分 / 风险评估评分 / 委员会风险评估评分
+        m_sc = re.search(r'\*\*(?:综合评分|技术面评分|基本面评分|情绪面评分|新闻面评分|风险评估评分|委员会风险评估评分)[^0-9]*([\d.]+)', txt)
+        m_act = re.search(r'\*\*操作建议\*\*\s*:\s*([^\n]+)', txt) if name not in ["技术分析师","基本面分析师","情绪分析师","新闻分析师","激进风控","保守风控","中性风控"] else None
         sc = m_sc.group(1) if m_sc else "?"
-        act = m_act.group(1).strip()[:10] if m_act else "?"
+        act = "?"
+        if m_act:
+            act = m_act.group(1).strip()[:10]
         lines.append(f"| {name} | {sc}/10 | {act} |")
     lines.append("")
     lines.append("## 审计结论")
@@ -656,22 +756,33 @@ print(f"   {STOCK}({CODE}) 10Agent 分析结果")
 print(f"{'='*60}")
 for name in ["技术分析师","基本面分析师","情绪分析师","新闻分析师","多头","激进风控","空头","保守风控","中性风控"]:
     sc = agent_results.get(name,"")
-    m = re.search(r'\*\*综合评分\*\*\s*:\s*([\d.]+)', sc)
+    m = re.search(r'\*\*(?:综合评分|技术面评分|基本面评分|情绪面评分|新闻面评分|风险评估评分|委员会风险评估评分)[^0-9]*([\d.]+)', sc)
     act = re.search(r'\*\*操作建议\*\*\s*:\s*([^\n]+)', sc)
     sc_str = m.group(1) if m else "?"
-    act_str = act.group(1).strip()[:12] if act else "?"
+    if name in ["技术分析师","基本面分析师","情绪分析师","新闻分析师","激进风控","保守风控","中性风控"]:
+        # 研究委员会和风险委员会不输出操作建议，显示空
+        act_str = "—"
+    else:
+        act_str = act.group(1).strip()[:12] if act else "?"
     print(f"   {name:10s} | 评分: {sc_str:4s} | 建议: {act_str}")
 
-pm = agent_results.get("组合经理","")
-m = re.search(r'\*\*综合评分\*\*\s*:\s*([\d.]+)', pm)
-act = re.search(r'\*\*操作建议\*\*\s*:\s*([^\n]+)', pm)
-pos = re.search(r'\*\*仓位比例\*\*\s*:\s*([^\n]+)', pm)
-ep = re.search(r'\*\*入场价格\*\*\s*:\s*([^\n]+)', pm)
-sl = re.search(r'\*\*止损价格\*\*\s*:\s*([^\n]+)', pm)
-tp = re.search(r'\*\*目标价格\*\*\s*:\s*([^\n]+)', pm)
-print(f"\n组合经理终裁:")
-print(f"   评分: {m.group(1) if m else '?'} | 建议: {act.group(1).strip()[:10] if act else '?'}")
-print(f"   入场: {ep.group(1).strip()[:20] if ep else '?'} | 止损: {sl.group(1).strip()[:20] if sl else '?'} | 目标: {tp.group(1).strip()[:20] if tp else '?'}")
+pm = agent_results.get("仲裁员", agent_results.get("组合经理",""))
+# 仲裁员字段兼容：综合评分 / 综合评分（...）, 最终操作 / 操作建议, 仓位比例 / 仓位建议
+m = re.search(r'\*\*综合评分[^0-9]*([\d.]+)', pm)
+act = re.search(r'\*\*(?:最终操作|操作建议|最终建议)\*{0,2}\s*[：:]\s*([^\n.。]+)', pm)
+pos = re.search(r'\*\*(?:仓位比例|仓位建议)\*{0,2}[^0-9]*[：:]\s*([^\n,，%]+)', pm)
+ep = re.search(r'\*\*(?:入场价格|入场价|入场|建议入场区间)\*{0,2}[^\n]*[：:]\s*([^\n,，]+)', pm)
+sl = re.search(r'\*\*(?:止损价格|止损价|止损)\*{0,2}[^\n]*[：:]\s*([^\n,，]+)', pm)
+tp = re.search(r'\*\*(?:目标价格|目标价|目标)\*{0,2}[^\n]*[：:]\s*([^\n,，]+)', pm)
+sc_txt = m.group(1) if m else "?"
+act_txt = "?"
+if act:
+    a = act.group(1).strip()
+    a = re.sub(r'^\*{1,2}\s*', '', a)
+    act_txt = a[:10]
+print(f"\n仲裁员终裁:")
+print(f"   评分: {sc_txt} | 建议: {act_txt}")
+print(f"   入场: {ep.group(1).strip()[:20] if ep else 'N/A'} | 止损: {sl.group(1).strip()[:20] if sl else 'N/A'} | 目标: {tp.group(1).strip()[:20] if tp else 'N/A'}")
 print(f"   仓位: {pos.group(1).strip()[:20] if pos else '?'}")
 
 # ====== 综合报告 ======
@@ -686,15 +797,19 @@ report.append("## 一、投票汇总")
 report.append("")
 for name in ["技术分析师","基本面分析师","情绪分析师","新闻分析师","多头","激进风控","空头","保守风控","中性风控"]:
     sc = agent_results.get(name,"")
-    m_sc = re.search(r"\*\*综合评分\*\*\s*:\s*([\d.]+)", sc)
-    act = re.search(r"\*\*操作建议\*\*\s*:\s*([^\n]+)", sc)
-    act_text = act.group(1).strip() if act else "?"
-    sc_text = m_sc.group(1) if m_sc else "?"
+    sc_text = "?"
+    m_sc = re.search(r"\*\*(?:综合评分|技术面评分|基本面评分|情绪面评分|新闻面评分|风险评估评分|委员会风险评估评分)[^0-9]*([\d.]+)", sc)
+    if m_sc: sc_text = m_sc.group(1)
+    if name in ["技术分析师","基本面分析师","情绪分析师","新闻分析师","激进风控","保守风控","中性风控"]:
+        act_text = "—"
+    else:
+        act = re.search(r"\*\*操作建议\*\*\s*:\s*([^\n]+)", sc)
+        act_text = act.group(1).strip() if act else "?"
     report.append(f"| **{name}** | **{sc_text}/10** | **{act_text}** |")
 report.append("")
-report.append("### 组合经理终裁")
+report.append("### 投决会仲裁员终裁")
 report.append("")
-report.append(agent_results.get("组合经理","")[:1500])
+report.append(agent_results.get("仲裁员","")[:1500])
 report.append("")
 report.append("---")
 report.append("")

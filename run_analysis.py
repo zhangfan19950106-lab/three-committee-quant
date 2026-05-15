@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-总指挥（龙虾）— 多Agent协作调度入口
+三委员会量化 — 多Agent三维协作分析系统
+
+架构：
+  研究委员会（4人并行）→ 风险委员会（3人并行）→ 投决会（3人并行）
 
 规则体系：
 1. [权限] 总指挥唯一调度入口，执行Agent只干活不辩解，监工只读不修改不指挥
@@ -134,30 +137,29 @@ def check_supervisor(run_output: str) -> dict:
 
 def extract_verdict(debate_output: str) -> dict:
     """从辩论输出提取终裁结论"""
-    v = {"score": "?", "action": "?", "position": "?", "reason": ""}
-    m = re.search(r"综合评分[^0-9]*([\d.]+)/10", debate_output)
+    v = {"score": "?", "action": "?", "position": "?", "entry": "?", "stop": "?", "target": "?", "reason": ""}
+    m = re.search(r"综合评分[^0-9]*([\d.]+)/?\s*10", debate_output)
     if m:
         v["score"] = m.group(1)
     
-    m = re.search(r"最终操作[：:\s]*([^\n.。]+)", debate_output)
+    m = re.search(r"(?:最终操作|最终建议)[：:\s]*([^\n.。]+)", debate_output)
     if m:
-        v["action"] = m.group(1).strip()
+        act = m.group(1).strip()
+        # 去掉可能的markdown标记
+        act = re.sub(r'^\*{1,2}\s*', '', act)
+        v["action"] = act[:20]
     
-    m = re.search(r"仓位[比例]*[：:\s]*([^\n]+)", debate_output)
-    if m:
-        v["position"] = m.group(1).strip()[:30]
-    
-    m = re.search(r"入场[价格价]*[：:\s]*([^\n]+)", debate_output)
-    if m:
-        v["entry"] = m.group(1).strip()[:40]
-    
-    m = re.search(r"止损[价格价]*[：:\s]*([^\n]+)", debate_output)
-    if m:
-        v["stop"] = m.group(1).strip()[:40]
-    
-    m = re.search(r"目标[价格价]*[：:\s]*([^\n]+)", debate_output)
-    if m:
-        v["target"] = m.group(1).strip()[:40]
+    for key, pattern in [
+        ("position", r"仓位(?:比例|建议)?[^：:\n]*[：:]\s*([^\n,，%]+)"),
+        ("entry", r"入场[价格价]*[^：:\n]*[：:]\s*([^\n,，]+)"),
+        ("stop", r"止损[价格价]*[^：:\n]*[：:]\s*([^\n,，]+)"),
+        ("target", r"目标[价格价]*[^：:\n]*[：:]\s*([^\n,，]+)"),
+    ]:
+        m = re.search(pattern, debate_output)
+        if m:
+            txt = m.group(1).strip()[:40]
+            txt = re.sub(r'^\*{1,2}\s*', '', txt)
+            v[key] = txt
     
     return v
 
@@ -176,18 +178,22 @@ def print_summary(stock, code, agent_results, verdict):
     for line in agent_results:
         print(f"    {line.strip()}")
     
-    # Phase 2: 辩论终裁
+    # Phase 2: 仲裁员终裁
     print()
-    print(f"  💬 R1辩论终裁")
+    def clean_val(key, default='?'):
+        """清理markdown标记和多余括号"""
+        t = verdict.get(key, default)
+        t = re.sub(r'^[*:：\s]+', '', t)
+        t = re.sub(r'[*]{1,2}', '', t)
+        t = t.strip(' (（').strip()
+        return t if t else default
+    print(f"  💬 仲裁员终裁")
     print(f"    评分: {verdict.get('score','?')}/10")
-    print(f"    操作: {verdict.get('action','?')}")
-    print(f"    仓位: {verdict.get('position','?')}")
-    if "entry" in verdict:
-        print(f"    入场: {verdict['entry']}")
-    if "stop" in verdict:
-        print(f"    止损: {verdict['stop']}")
-    if "target" in verdict:
-        print(f"    目标: {verdict['target']}")
+    print(f"    操作: {clean_val('action')}")
+    print(f"    仓位: {clean_val('position')}")
+    print(f"    入场: {clean_val('entry')}")
+    print(f"    止损: {clean_val('stop')}")
+    print(f"    目标: {clean_val('target')}")
     print(f"    {'=' * 40}")
     print()
 
@@ -263,8 +269,7 @@ def main():
             if not supervisor["pass"] and supervisor["rating"] not in ("A", "A+", "B+", "B", "S"):
                 reasons.append(f"评级{supervisor['rating']}")
             reason_str = "; ".join(reasons)
-            eprint(f"{TAG_REJECT} 监工审核不通过 ({reason_str})"
-  ".join(reasons)})")
+            eprint(f"{TAG_REJECT} 监工审核不通过 ({reason_str})")
             retries += 1
             if retries <= MAX_RETRY:
                 eprint(f"第{retries}次重试 (上限{MAX_RETRY}次)...")
@@ -282,35 +287,28 @@ def main():
     report_dir = report_dir or os.path.join(OUT_DIR, f"{stock}_{today}")
     eprint(f"  报告路径: {report_dir}")
 
-    # ===== Phase 2: 三风控R1辩论 =====
-    # 判断问题类型
-    if cost == 0:
-        question = f"问题：要不要买入{stock}？"
-    else:
-        question = f"问题：{stock}持仓该不该卖？"
-
+    # ===== Phase 2: 辩论=多头vs空头→风险委员会→仲裁员 =====
     debate_replacements = {
         'STOCK = "小米"': f'STOCK = "{stock}"',
         'CODE = "01810.HK"': f'CODE = "{code}"',
         "COST = 33.70": f"COST = {cost}",
         "POSITION = 0": f"POSITION = {position}",
-        "问题：要不要买入小米？": question,
     }
 
     debate_script = os.path.join(BASE_DIR, f"_debate_{stock}.py")
     generate_and_write_script(DEBATE_SCRIPT, debate_script, debate_replacements)
 
-    eprint(f"{TAG_DISPATCH} R1辩论 ({stock})")
-    debate_result = run_script(debate_script, timeout=400, label="R1辩论")
+    eprint(f"{TAG_DISPATCH} 投决会辩论-多头vs空头→仲裁员 ({stock})")
+    debate_result = run_script(debate_script, timeout=500, label="辩论")
 
-    if not debate_result.get("ok"):
-        eprint(f"{TAG_ERROR} 辩论异常，但已生成报告")
-        print_summary(stock, code, extract_key_lines(analysis_out), {"score": "?", "action": "辩论异常"})
-        return
+    # 哪怕辩论exit code非0，尝试从文件读终裁
+    debate_ok = debate_result.get("ok", False)
+    if not debate_ok:
+        eprint(f"{TAG_ERROR} 辩论脚本异常(exit={debate_result.get('code','?')})，尝试从文件读取终裁...")
+    else:
+        eprint(f"{TAG_DONE} 辩论完成")
 
-    eprint(f"{TAG_DONE} R1辩论完成")
-
-    # 提取终裁
+    # 提取仲裁员终裁（无论exit code如何，只要文件在就提取）
     verdict_output = ""
     debate_dir = os.path.join(report_dir, "辩论")
     verdict_file = os.path.join(debate_dir, "辩论_终裁.md")
@@ -320,6 +318,18 @@ def main():
         verdict_output = debate_result.get("stdout", "")
 
     verdict = extract_verdict(verdict_output)
+
+    # 即使文件存在也兜底
+    if verdict["action"] == "?" or verdict["action"] == "辩论异常":
+        # 尝试从more格式提取
+        for alt_fn in ["辩论_round2_中性风控_终裁.md", "辩论_终裁.md"]:
+            alt_path = os.path.join(debate_dir, alt_fn)
+            if os.path.exists(alt_path):
+                alt_txt = open(alt_path, encoding="utf-8").read()
+                alt_v = extract_verdict(alt_txt)
+                if alt_v["action"] != "?":
+                    verdict = alt_v
+                    break
 
     eprint(f"{TAG_PASS} 终裁: {verdict['score']}/10 → {verdict['action']} (仓位 {verdict['position']})")
 
