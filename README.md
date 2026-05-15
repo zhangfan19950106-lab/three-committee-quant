@@ -1,9 +1,4 @@
-<<<<<<< HEAD
-Featuring:
-Supervisor Agent for quality control
-AI Investment Committee for institutional-grade decisions
-=======
-# 三委员会量化 — 港股多Agent分析系统
+<# 三委员会量化 — 港股多Agent分析系统
 
 多Agent协作式港股量化分析系统，采用**三委员会架构**替代传统单一大模型评估。
 
